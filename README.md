@@ -1,4 +1,4 @@
-# BoltDB utils
+# BoltDB utilities
 
 ## Installation
 
