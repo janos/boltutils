@@ -1,0 +1,13 @@
+language: go
+
+go:
+  - 1.7
+
+install:
+  - go get -v resenje.org/boltutils
+
+before_script:
+  - go vet -v resenje.org/boltutils/...
+
+script:
+  - go test -v resenje.org/boltutils/...
