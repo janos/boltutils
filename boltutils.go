@@ -11,27 +11,33 @@ import (
 	"github.com/coreos/bbolt"
 )
 
+// NotFoundError is returned by DeepDelete if ensure options is true.
 type NotFoundError struct {
 	Key string
 }
 
+// NewNotFoundError returns a new instance of NotFoundError.
 func NewNotFoundError(key string) *NotFoundError { return &NotFoundError{Key: key} }
 
 func (e *NotFoundError) Error() string { return fmt.Sprintf("key not found %q", e.Key) }
 
+// IsNotFoundError returns true if provided error is of NotFoundError type.
 func IsNotFoundError(err error) (yes bool) {
 	_, yes = err.(*NotFoundError)
 	return
 }
 
+// ExistsError is retuned by DeepPut if overwrite option is set to false.
 type ExistsError struct {
 	Key string
 }
 
+// NewExistsError returns a new instance of ExistsError.
 func NewExistsError(key string) *ExistsError { return &ExistsError{Key: key} }
 
 func (e *ExistsError) Error() string { return fmt.Sprintf("key exists %q", e.Key) }
 
+// IsExistsError returns true if provided error is of ExistsError type.
 func IsExistsError(err error) (yes bool) {
 	_, yes = err.(*ExistsError)
 	return
