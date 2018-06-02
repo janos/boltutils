@@ -68,6 +68,9 @@ func TestDeep(t *testing.T) {
 	putValueSecond := []byte("second")
 
 	t.Run("Put_Minimal", func(t *testing.T) {
+		db := NewDB(t)
+		defer db.Destroy()
+
 		var new bool
 		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
 			new, err = DeepPut(tx, false, bucket1Name, keyName, putValue)
@@ -92,6 +95,60 @@ func TestDeep(t *testing.T) {
 
 		if err := db.DB.View(func(tx *bolt.Tx) error {
 			value := DeepGet(tx, bucket1Name, keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s key %s: expected %s, got %s", bucket1Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := DeepBucket(tx, bucket1Name)
+			value := b.Get(keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s key %s: expected %s, got %s", bucket1Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+	})
+
+	t.Run("CreateBucketIfNotExists_Minimal", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			b, err := DeepCreateBucketIfNotExists(tx, bucket1Name)
+			if err != nil {
+				return err
+			}
+			return b.Put(keyName, putValue)
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := tx.Bucket(bucket1Name).Get(keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s key %s: expected %s, got %s", bucket1Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := DeepGet(tx, bucket1Name, keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s key %s: expected %s, got %s", bucket1Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := DeepBucket(tx, bucket1Name)
+			value := b.Get(keyName)
 			if !bytes.Equal(value, putValue) {
 				t.Errorf("bucket %s key %s: expected %s, got %s", bucket1Name, keyName, putValue, value)
 			}
@@ -128,6 +185,60 @@ func TestDeep(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("bolt db view transaction %s", err)
 		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := DeepBucket(tx, bucket1Name, bucket2Name)
+			value := b.Get(keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s.%s key %s: expected %s, got %s", bucket1Name, bucket2Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+	})
+
+	t.Run("CreateBucketIfNotExists_Nested", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			b, err := DeepCreateBucketIfNotExists(tx, bucket1Name, bucket2Name)
+			if err != nil {
+				return err
+			}
+			return b.Put(keyName, putValue)
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := tx.Bucket(bucket1Name).Bucket(bucket2Name).Get(keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s.%s key %s: expected %s, got %s", bucket1Name, bucket2Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := DeepGet(tx, bucket1Name, bucket2Name, keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s.%s key %s: expected %s, got %s", bucket1Name, bucket2Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := DeepBucket(tx, bucket1Name, bucket2Name)
+			value := b.Get(keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s.%s key %s: expected %s, got %s", bucket1Name, bucket2Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
 	})
 
 	t.Run("Put_Nested2", func(t *testing.T) {
@@ -150,6 +261,17 @@ func TestDeep(t *testing.T) {
 
 		if err := db.DB.View(func(tx *bolt.Tx) error {
 			value := DeepGet(tx, bucket3Name, bucket2Name, bucket1Name, keyName)
+			if !bytes.Equal(value, putValue) {
+				t.Errorf("bucket %s.%s.%s key %s: expected %s, got %s", bucket3Name, bucket2Name, bucket1Name, keyName, putValue, value)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := DeepBucket(tx, bucket3Name, bucket2Name, bucket1Name)
+			value := b.Get(keyName)
 			if !bytes.Equal(value, putValue) {
 				t.Errorf("bucket %s.%s.%s key %s: expected %s, got %s", bucket3Name, bucket2Name, bucket1Name, keyName, putValue, value)
 			}
@@ -343,6 +465,225 @@ func TestDeep(t *testing.T) {
 		if err := db.DB.Update(func(tx *bolt.Tx) error {
 			return DeepDelete(tx, true, bucket1Name)
 		}); err.Error() != "insufficient number of elements 1 < 2" {
+			t.Errorf("invalid error: %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Minimal", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			_, err = DeepCreateBucketIfNotExists(tx, bucket1Name)
+			return err
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket1Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket1Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, bucket1Name)
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket1Name)
+			if b != nil {
+				t.Errorf("bucket %s found: expected nil", bucket1Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := DeepBucket(tx, bucket1Name)
+			if value != nil {
+				t.Errorf("bucket %s found: expected nil", bucket1Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Nested", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			_, err = DeepCreateBucketIfNotExists(tx, bucket3Name, bucket2Name)
+			return err
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket3Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket3Name)
+				return nil
+			}
+			b = b.Bucket(bucket2Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket2Name)
+				return nil
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, bucket3Name, bucket2Name)
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket3Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket3Name)
+				return nil
+			}
+			b = b.Bucket(bucket2Name)
+			if b != nil {
+				t.Errorf("bucket %s found: expected nil", bucket2Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := DeepBucket(tx, bucket3Name, bucket2Name)
+			if value != nil {
+				t.Errorf("bucket %s found: expected nil", bucket2Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Nested2", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			_, err = DeepCreateBucketIfNotExists(tx, bucket1Name, bucket3Name, bucket2Name)
+			return err
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket1Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket1Name)
+				return nil
+			}
+			b = b.Bucket(bucket3Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket3Name)
+				return nil
+			}
+			b = b.Bucket(bucket2Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket2Name)
+				return nil
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, bucket1Name, bucket3Name, bucket2Name)
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket1Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket1Name)
+				return nil
+			}
+			b = b.Bucket(bucket3Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket3Name)
+				return nil
+			}
+			b = b.Bucket(bucket2Name)
+			if b != nil {
+				t.Errorf("bucket %s found: expected nil", bucket2Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			value := DeepBucket(tx, bucket1Name, bucket3Name, bucket2Name)
+			if value != nil {
+				t.Errorf("bucket %s found: expected nil", bucket2Name)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Ensure", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, keyNameFake)
+		}); !IsNotFoundError(err) {
+			t.Errorf("invalid error: %s", err)
+		}
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, bucket1Name, keyNameFake)
+		}); !IsNotFoundError(err) {
+			t.Errorf("invalid error: %s", err)
+		}
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, keyNameFake, bucket1Name, keyNameFake)
+		}); !IsNotFoundError(err) {
+			t.Errorf("invalid error: %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Ensure2", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) (err error) {
+			_, err = DeepCreateBucketIfNotExists(tx, bucket1Name)
+			return err
+		}); err != nil {
+			t.Fatalf("bolt db update transaction %s", err)
+		}
+
+		if err := db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucket1Name)
+			if b == nil {
+				t.Errorf("bucket %s not found", bucket1Name)
+				return nil
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("bolt db view transaction %s", err)
+		}
+
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true, bucket1Name, keyNameFake)
+		}); !IsNotFoundError(err) {
+			t.Errorf("invalid error: %s", err)
+		}
+	})
+
+	t.Run("DeleteBucket_Error", func(t *testing.T) {
+		if err := db.DB.Update(func(tx *bolt.Tx) error {
+			return DeepDeleteBucket(tx, true)
+		}); err.Error() != "insufficient number of elements 0 < 1" {
 			t.Errorf("invalid error: %s", err)
 		}
 	})

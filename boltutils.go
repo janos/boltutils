@@ -43,6 +43,26 @@ func IsExistsError(err error) (yes bool) {
 	return
 }
 
+// DeepBucket retrieves bucket named as the last element of the elements
+// arguments in nested buckets named as previous elements.
+func DeepBucket(tx *bolt.Tx, elements ...[]byte) (bucket *bolt.Bucket) {
+	length := len(elements)
+	if length < 1 {
+		return nil
+	}
+	bucket = tx.Bucket(elements[0])
+	if bucket == nil {
+		return nil
+	}
+	for i := 1; i < length; i++ {
+		bucket = bucket.Bucket(elements[i])
+		if bucket == nil {
+			return nil
+		}
+	}
+	return bucket
+}
+
 // DeepGet retrieves the key named as the last element of the elements
 // arguments in nested buckets named as previous elements.
 func DeepGet(tx *bolt.Tx, elements ...[]byte) (data []byte) {
@@ -50,20 +70,34 @@ func DeepGet(tx *bolt.Tx, elements ...[]byte) (data []byte) {
 	if length < 2 {
 		return nil
 	}
-	path := elements[0]
-	bucket := tx.Bucket(elements[0])
+	bucket := DeepBucket(tx, elements[:length-1]...)
 	if bucket == nil {
-		return
-	}
-	for i := 1; i < length-1; i++ {
-		path = append(path, []byte(", ")...)
-		path = append(path, elements[i]...)
-		bucket = bucket.Bucket(elements[i])
-		if bucket == nil {
-			return
-		}
+		return nil
 	}
 	return bucket.Get(elements[length-1])
+}
+
+// DeepCreateBucketIfNotExists creates nested buckets with names
+// of the elements arguments.
+func DeepCreateBucketIfNotExists(tx *bolt.Tx, elements ...[]byte) (bucket *bolt.Bucket, err error) {
+	length := len(elements)
+	if length < 1 {
+		return nil, fmt.Errorf("insufficient number of elements %d < 1", length)
+	}
+	path := elements[0]
+	bucket, err = tx.CreateBucketIfNotExists(elements[0])
+	if err != nil {
+		return nil, fmt.Errorf("bucket create %s: %s", elements[0], err)
+	}
+	for i := 1; i < length; i++ {
+		path = append(path, []byte(", ")...)
+		path = append(path, elements[i]...)
+		bucket, err = bucket.CreateBucketIfNotExists(elements[i])
+		if err != nil {
+			return nil, fmt.Errorf("bucket create %s: %s", path, err)
+		}
+	}
+	return bucket, nil
 }
 
 // DeepPut saves the last element of elements arguments under the
@@ -77,24 +111,25 @@ func DeepPut(tx *bolt.Tx, overwrite bool, elements ...[]byte) (new bool, err err
 	if length < 3 {
 		return false, fmt.Errorf("insufficient number of elements %d < 3", length)
 	}
-	path := elements[0]
-	bucket, err := tx.CreateBucketIfNotExists(elements[0])
+	bucket, err := DeepCreateBucketIfNotExists(tx, elements[:length-2]...)
 	if err != nil {
-		return false, fmt.Errorf("bucket create %s: %s", elements[0], err)
-	}
-	for i := 1; i < length-2; i++ {
-		path = append(path, []byte(", ")...)
-		path = append(path, elements[i]...)
-		bucket, err = bucket.CreateBucketIfNotExists(elements[i])
-		if err != nil {
-			return false, fmt.Errorf("bucket create %s: %s", path, err)
-		}
+		return false, err
 	}
 	new = bucket.Get(elements[length-2]) == nil
 	if !overwrite && !new {
-		return false, NewExistsError(string(path) + ", " + string(elements[length-2]))
+		path := elements[0]
+		for i := 1; i < length-1; i++ {
+			path = append(path, []byte(", ")...)
+			path = append(path, elements[i]...)
+		}
+		return false, NewExistsError(string(path))
 	}
 	if err = bucket.Put(elements[length-2], elements[length-1]); err != nil {
+		path := elements[0]
+		for i := 1; i < length-1; i++ {
+			path = append(path, []byte(", ")...)
+			path = append(path, elements[i]...)
+		}
 		return new, fmt.Errorf("bucket %s put %s: %s", path, elements[length-2], err)
 	}
 	return new, nil
@@ -135,4 +170,56 @@ func DeepDelete(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) {
 		return fmt.Errorf("bucket %s delete %s: %s", path, elements[length-1], err)
 	}
 	return
+}
+
+// DeepDeleteBucket deletes bucket named as the last element of the elements
+// arguments in nested buckets named as previous elements.
+// With argument set to true, this function will return ErrNotFound
+// if the element is not deleted.
+func DeepDeleteBucket(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) {
+	length := len(elements)
+	if length < 1 {
+		return fmt.Errorf("insufficient number of elements %d < 1", length)
+	}
+	path := elements[0]
+	bucket := tx.Bucket(elements[0])
+	if bucket == nil {
+		if ensure {
+			return NewNotFoundError(string(path))
+		}
+		return nil
+	}
+	if len(elements) == 1 {
+		if err = tx.DeleteBucket(elements[0]); err != nil {
+			if err == bolt.ErrBucketNotFound {
+				if ensure {
+					return NewNotFoundError(string(path))
+				}
+				return nil
+			}
+			return fmt.Errorf("bucket %s delete %s: %s", path, elements[0], err)
+		}
+		return nil
+	}
+	for i := 1; i < length-1; i++ {
+		path = append(path, []byte(", ")...)
+		path = append(path, elements[i]...)
+		bucket = bucket.Bucket(elements[i])
+		if bucket == nil {
+			if ensure {
+				return NewNotFoundError(string(path))
+			}
+			return nil
+		}
+	}
+	if err = bucket.DeleteBucket(elements[length-1]); err != nil {
+		if err == bolt.ErrBucketNotFound {
+			if ensure {
+				return NewNotFoundError(string(path) + ", " + string(elements[length-1]))
+			}
+			return nil
+		}
+		return fmt.Errorf("bucket %s delete %s: %s", path, elements[length-1], err)
+	}
+	return nil
 }
