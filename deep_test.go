@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/etcd-io/bbolt"
 )
 
 // tempfile returns a temporary file path.

@@ -8,7 +8,7 @@ package boltutils // import "resenje.org/boltutils"
 import (
 	"fmt"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/etcd-io/bbolt"
 )
 
 // NotFoundError is returned by DeepDelete if ensure options is true.
