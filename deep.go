@@ -7,6 +7,7 @@ package boltutils // import "resenje.org/boltutils"
 
 import (
 	"fmt"
+	"strings"
 
 	bolt "github.com/etcd-io/bbolt"
 )
@@ -84,17 +85,14 @@ func DeepCreateBucketIfNotExists(tx *bolt.Tx, elements ...[]byte) (bucket *bolt.
 	if length < 1 {
 		return nil, fmt.Errorf("insufficient number of elements %d < 1", length)
 	}
-	path := elements[0]
 	bucket, err = tx.CreateBucketIfNotExists(elements[0])
 	if err != nil {
 		return nil, fmt.Errorf("bucket create %s: %s", elements[0], err)
 	}
 	for i := 1; i < length; i++ {
-		path = append(path, []byte(", ")...)
-		path = append(path, elements[i]...)
 		bucket, err = bucket.CreateBucketIfNotExists(elements[i])
 		if err != nil {
-			return nil, fmt.Errorf("bucket create %s: %s", path, err)
+			return nil, fmt.Errorf("bucket create %s: %s", path(elements[:i+1]...), err)
 		}
 	}
 	return bucket, nil
@@ -117,20 +115,10 @@ func DeepPut(tx *bolt.Tx, overwrite bool, elements ...[]byte) (new bool, err err
 	}
 	new = bucket.Get(elements[length-2]) == nil
 	if !overwrite && !new {
-		path := elements[0]
-		for i := 1; i < length-1; i++ {
-			path = append(path, []byte(", ")...)
-			path = append(path, elements[i]...)
-		}
-		return false, NewExistsError(string(path))
+		return false, NewExistsError(path(elements[:length-1]...))
 	}
 	if err = bucket.Put(elements[length-2], elements[length-1]); err != nil {
-		path := elements[0]
-		for i := 1; i < length-1; i++ {
-			path = append(path, []byte(", ")...)
-			path = append(path, elements[i]...)
-		}
-		return new, fmt.Errorf("bucket %s put %s: %s", path, elements[length-2], err)
+		return new, fmt.Errorf("bucket %s put %s: %s", path(elements[:length-2]...), elements[length-1], err)
 	}
 	return new, nil
 }
@@ -144,30 +132,27 @@ func DeepDelete(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) {
 	if length < 2 {
 		return fmt.Errorf("insufficient number of elements %d < 2", length)
 	}
-	path := elements[0]
 	bucket := tx.Bucket(elements[0])
 	if bucket == nil {
 		if ensure {
-			return NewNotFoundError(string(path))
+			return NewNotFoundError(string(elements[0]))
 		}
 		return nil
 	}
 	for i := 1; i < length-1; i++ {
-		path = append(path, []byte(", ")...)
-		path = append(path, elements[i]...)
 		bucket = bucket.Bucket(elements[i])
 		if bucket == nil {
 			if ensure {
-				return NewNotFoundError(string(path))
+				return NewNotFoundError(path(elements[:i+1]...))
 			}
 			return nil
 		}
 	}
 	if ensure && bucket.Get(elements[length-1]) == nil {
-		return NewNotFoundError(string(path) + ", " + string(elements[length-1]))
+		return NewNotFoundError(path(elements[:length-1]...))
 	}
 	if err = bucket.Delete(elements[length-1]); err != nil {
-		return fmt.Errorf("bucket %s delete %s: %s", path, elements[length-1], err)
+		return fmt.Errorf("bucket %s delete %s: %s", path(elements[:length-1]...), elements[length-1], err)
 	}
 	return
 }
@@ -181,11 +166,10 @@ func DeepDeleteBucket(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) 
 	if length < 1 {
 		return fmt.Errorf("insufficient number of elements %d < 1", length)
 	}
-	path := elements[0]
 	bucket := tx.Bucket(elements[0])
 	if bucket == nil {
 		if ensure {
-			return NewNotFoundError(string(path))
+			return NewNotFoundError(string(elements[0]))
 		}
 		return nil
 	}
@@ -193,21 +177,19 @@ func DeepDeleteBucket(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) 
 		if err = tx.DeleteBucket(elements[0]); err != nil {
 			if err == bolt.ErrBucketNotFound {
 				if ensure {
-					return NewNotFoundError(string(path))
+					return NewNotFoundError(string(elements[0]))
 				}
 				return nil
 			}
-			return fmt.Errorf("bucket %s delete %s: %s", path, elements[0], err)
+			return fmt.Errorf("bucket %s delete: %s", string(elements[0]), err)
 		}
 		return nil
 	}
 	for i := 1; i < length-1; i++ {
-		path = append(path, []byte(", ")...)
-		path = append(path, elements[i]...)
 		bucket = bucket.Bucket(elements[i])
 		if bucket == nil {
 			if ensure {
-				return NewNotFoundError(string(path))
+				return NewNotFoundError(path(elements[:i+1]...))
 			}
 			return nil
 		}
@@ -215,11 +197,23 @@ func DeepDeleteBucket(tx *bolt.Tx, ensure bool, elements ...[]byte) (err error) 
 	if err = bucket.DeleteBucket(elements[length-1]); err != nil {
 		if err == bolt.ErrBucketNotFound {
 			if ensure {
-				return NewNotFoundError(string(path) + ", " + string(elements[length-1]))
+				return NewNotFoundError(path(elements[:length-1]...))
 			}
 			return nil
 		}
-		return fmt.Errorf("bucket %s delete %s: %s", path, elements[length-1], err)
+		return fmt.Errorf("bucket %s delete %s: %s", path(elements[:length-1]...), elements[length-1], err)
 	}
 	return nil
+}
+
+// path returns comma delimited string with provided elements used in error
+// messages.
+func path(elements ...[]byte) (p string) {
+	var b strings.Builder
+	b.Write(elements[0])
+	for _, e := range elements[1:] {
+		b.Write([]byte(", "))
+		b.Write(e)
+	}
+	return b.String()
 }
