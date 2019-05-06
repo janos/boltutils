@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	bolt "github.com/etcd-io/bbolt"
+	bolt "go.etcd.io/bbolt"
 )
 
 // NotFoundError is returned by DeepDelete if ensure options is true.

@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	bolt "github.com/etcd-io/bbolt"
+	bolt "go.etcd.io/bbolt"
 )
 
 // tempfile returns a temporary file path.
